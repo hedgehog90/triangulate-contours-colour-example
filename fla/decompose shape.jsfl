@@ -103,6 +103,7 @@ var dom = fl.getDocumentDOM();
 var selection = dom.selection;
 var e = selection[0];
 var contours = [];
+var colors = [];
 var bezierbuilder = new BezierBuilder();
 for (var c=0; c<e.contours.length; c++) {
     var cont = e.contours[c];
@@ -125,9 +126,11 @@ for (var c=0; c<e.contours.length; c++) {
         id = he.id;
     }
     draw_poly(contour);
+    colors.push(cont.fill.color);
     contours.push(contour);
 }
 fl.drawingLayer.endFrame();
 fl.drawingLayer.endDraw();
 
-fl.trace(JSON.stringify(contours));
+fl.trace("var contours = "+JSON.stringify(contours)+";");
+fl.trace("var colors = "+JSON.stringify(colors)+";");
