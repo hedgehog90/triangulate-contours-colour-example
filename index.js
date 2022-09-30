@@ -19,5 +19,5 @@ const createWindow = ()=>{
         }
     })
     // win.webContents.openDevTools();
-    win.loadURL("data:text/html;charset=utf-8");
+    win.loadURL("about:blank");
 }
