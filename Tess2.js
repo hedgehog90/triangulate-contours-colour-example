@@ -54,6 +54,7 @@ var Tess2 = (function(){
         for (var i = 0; i < opts.contours.length; i++) {
             tess.addContour(opts.vertexSize || 2, opts.contours[i]);
         }
+        tess.mesh.contours_added = true;
         tess.tesselate(opts.windingRule || Tess2.WINDING_ODD,
                     opts.elementType || Tess2.POLYGONS,
                     opts.polySize || 3,
@@ -160,6 +161,42 @@ var Tess2 = (function(){
         this.n = 0;				/* to allow identiy unique faces */
         this.marked = false;	/* flag for conversion to strips */
         this.inside = false;	/* this face is in the polygon interior */
+    };
+
+    TESSface.prototype = {
+        get area(){
+            var a = 0;
+            var e = this.anEdge;
+            do {
+                a += (e.Org.s - e.Dst.s) * (e.Org.t + e.Dst.t);
+                e = e.Lnext;
+            } while( e !== this.anEdge );
+            return a;
+        },
+        get vertices(){
+            var verts = [];
+            var e = this.anEdge;
+            do {
+                verts.push(e.Org);
+                e = e.Lnext;
+            } while( e !== this.anEdge );
+            return verts;
+        },
+        make_contour_id_consistent: function(){
+            var eCur = this.anEdge;
+            var cid;
+            do {
+                cid = eCur.contourId;
+                eCur = eCur.Lnext;
+            }
+            while (eCur !== this.anEdge && cid == null);
+            eCur = this.anEdge;
+            do {
+                eCur.contourId = cid;
+                eCur = eCur.Lnext;
+            }
+            while (eCur !== this.anEdge);
+        }
     };
 
     function TESShalfEdge(side) {
@@ -315,6 +352,21 @@ var Tess2 = (function(){
     */
 
     TESSmesh.prototype = {
+        get faces() {
+            var arr = [];
+            for ( var e = this.fHead.next; e !== this.fHead; e = e.next ) arr.push(e);
+            return arr;
+        },
+        get vertices() {
+            var arr = [];
+            for ( var e = this.vHead.next; e !== this.vHead; e = e.next ) arr.push(e);
+            return arr;
+        },
+        get edges() {
+            var arr = [];
+            for ( var e = this.eHead.next; e !== this.eHead; e = e.next ) arr.push(e);
+            return arr;
+        },
 
         /* MakeEdge creates a new pair of half-edges which form their own loop.
         * No vertex or face structures are allocated, but these must be assigned
@@ -410,7 +462,7 @@ var Tess2 = (function(){
         // static void MakeFace( TESSface *newFace, TESShalfEdge *eOrig, TESSface *fNext )
         makeFace_: function(newFace, eOrig, fNext) {
             var fNew = newFace;
-            assert(fNew !== null); 
+            assert(fNew !== null);
 
             /* insert in circular doubly-linked list before fNext */
             var fPrev = fNext.prev;
@@ -422,8 +474,6 @@ var Tess2 = (function(){
             fNew.anEdge = eOrig;
             fNew.trail = null;
             fNew.marked = false;
-            
-            if (eOrig.Rface) fNew.contourId = eOrig.Rface.contourId;
 
             /* The new face is marked "inside" if the old one was.  This is a
             * convenience for the common case where a face has been split in two.
@@ -436,6 +486,13 @@ var Tess2 = (function(){
                 e.Lface = fNew;
                 e = e.Lnext;
             } while(e !== eOrig);
+            
+            // if (eOrig.Rface.contourId == null && this.sweeping) debugger;
+            // if (eOrig.Rface.contourId != null) {
+                // newFace.contourId = eOrig.Rface.contourId;
+                // if (fNew.inside == eOrig.Rface.inside) newFace.contourId = eOrig.Rface.contourId;
+                // else newFace.contourId = eOrig.Lface.contourId;
+            // }
         },
 
         /* KillEdge( eDel ) destroys an edge (the half-edges eDel and eDel->Sym),
@@ -493,6 +550,8 @@ var Tess2 = (function(){
             var fNext = fDel.next;
             fNext.prev = fPrev;
             fPrev.next = fNext;
+            
+            // if (fDel.contourId == null && this.sweeping) debugger;
         },
 
         /****************** Basic Edge Operations **********************/
@@ -537,6 +596,10 @@ var Tess2 = (function(){
         */
         //int tessMeshSplice( TESSmesh* mesh, TESShalfEdge *eOrg, TESShalfEdge *eDst )
         splice: function(eOrg, eDst) {
+            
+            /* if (this.sweeping) {
+                console.log(eOrg.Org.coords, eOrg.Dst.coords, eDst.Org.coords, eDst.Dst.coords)
+            } */
             var joiningLoops = false;
             var joiningVertices = false;
 
@@ -555,6 +618,7 @@ var Tess2 = (function(){
 
             /* Change the edge structure */
             this.splice_( eDst, eOrg );
+            
 
             if( ! joiningVertices ) {
                 var newVertex = new TESSvertex();
@@ -598,6 +662,7 @@ var Tess2 = (function(){
                 /* We are joining two loops into one -- remove the left face */
                 joiningLoops = true;
                 this.killFace_( eDel.Lface, eDel.Rface );
+                // eDel.Rface.contourId = eDel.Lface.contourId
             }
 
             if( eDel.Onext === eDel ) {
@@ -669,7 +734,7 @@ var Tess2 = (function(){
         * eOrg and eNew will have the same left face.
         */
         // TESShalfEdge *tessMeshSplitEdge( TESSmesh *mesh, TESShalfEdge *eOrg );
-        splitEdge: function(eOrg, eDst) {
+        splitEdge: function(eOrg) {
             var tempHalfEdge = this.addEdgeVertex( eOrg );
             var eNew = tempHalfEdge.Sym;
 
@@ -723,11 +788,27 @@ var Tess2 = (function(){
             /* Make sure the old face points to a valid half-edge */
             eOrg.Lface.anEdge = eNewSym;
 
+            eNewSym.contourId = eDst.contourId
+            eNew.contourId = eOrg.contourId
+
+            // eNew.Lface.contourId = eDst.Rface.contourId;
+
             if( ! joiningLoops ) {
                 var newFace = new TESSface();
                 /* We split one loop into two -- the new loop is eNew->Lface */
                 this.makeFace_( newFace, eNew, eOrg.Lface );
             }
+            // eOrg.Rface.contourId = eDst.Rface.contourId
+            
+            // eNew.contourId = eOrg.contourId;
+            // eNew.Sym.contourId = eOrg.Lnext.contourId;
+
+            // eOrg.Rface.make_contour_id_consistent();
+            // eNew.Rface.make_contour_id_consistent();
+            
+            
+            // eNew.Lface.contourId = eOrg.Rface.contourId;
+
             return eNew;
         },
 
@@ -816,20 +897,23 @@ var Tess2 = (function(){
                     // Try to merge if the neighbour face is valid.
                     if( eSym && eSym.Lface && eSym.Lface.inside )
                     {
-                        // Try to merge the neighbour faces if the resulting polygons
-                        // does not exceed maximum number of vertices.
-                        curNv = this.countFaceVerts_( f );
-                        symNv = this.countFaceVerts_( eSym.Lface );
-                        if( (curNv+symNv-2) <= maxVertsPerFace )
+                        if( eSym.contourId == f.anEdge.contourId )
                         {
-                            // Merge if the resulting poly is convex.
-                            if( Geom.vertCCW( eCur.Lprev.Org, eCur.Org, eSym.Lnext.Lnext.Org ) &&
-                                Geom.vertCCW( eSym.Lprev.Org, eSym.Org, eCur.Lnext.Lnext.Org ) )
+                            // Try to merge the neighbour faces if the resulting polygons
+                            // does not exceed maximum number of vertices.
+                            curNv = this.countFaceVerts_( f );
+                            symNv = this.countFaceVerts_( eSym.Lface );
+                            if( (curNv+symNv-2) <= maxVertsPerFace )
                             {
-                                eNext = eSym.Lnext;
-                                this.delete_( eSym );
-                                eCur = null;
-                                eSym = null;
+                                // Merge if the resulting poly is convex.
+                                if( Geom.vertCCW( eCur.Lprev.Org, eCur.Org, eSym.Lnext.Lnext.Org ) &&
+                                    Geom.vertCCW( eSym.Lprev.Org, eSym.Org, eCur.Lnext.Lnext.Org ) )
+                                {
+                                    eNext = eSym.Lnext;
+                                    this.delete_( eSym );
+                                    eCur = null;
+                                    eSym = null;
+                                }
                             }
                         }
                     }
@@ -2594,9 +2678,12 @@ var Tess2 = (function(){
         *
         *	e1 < e2  iff  e1.x < e2.x || (e1.x == e2.x && e1.y < e2.y)
         */
+        
         Sweep.removeDegenerateEdges( tess );
         if ( !Sweep.initPriorityQ( tess ) ) return false; /* if error */
         Sweep.initEdgeDict( tess );
+
+        tess.mesh.sweeping = true;
 
         while( (v = tess.pq.extractMin()) !== null ) {
             for( ;; ) {
@@ -2618,11 +2705,15 @@ var Tess2 = (function(){
                 * when using boundary extraction (TESS_BOUNDARY_ONLY).
                 */
                 vNext = tess.pq.extractMin();
+                console.log(tess.mesh.faces.filter(f=>f.contourId == 1).map(f=>f.vertices.length).join(","));
                 Sweep.spliceMergeVertices( tess, v.anEdge, vNext.anEdge );
+                console.log(tess.mesh.faces.filter(f=>f.contourId == 1).map(f=>f.vertices.length).join(","));
+                true;
             }
             Sweep.sweepEvent( tess, v );
         }
 
+                
         /* Set tess->event for debugging purposes */
         tess.event = tess.dict.min().key.eUp.Org;
         Sweep.debugEvent( tess );
@@ -2631,6 +2722,8 @@ var Tess2 = (function(){
 
         if ( !Sweep.removeDegenerateFaces( tess, tess.mesh ) ) return false;
         tess.mesh.check();
+        
+        console.log(tess.mesh.faces.map(m=>m.contourId).sort().join(","));
 
         return true;
     }
@@ -2661,7 +2754,7 @@ var Tess2 = (function(){
 
         this.vertexIndexCounter = 0;
         
-        this.countourId = 0;
+        this.contourId = 0;
         this.vertices = [];
         this.vertexIndices = [];
         this.vertexCount = 0;
@@ -2933,6 +3026,7 @@ var Tess2 = (function(){
             * Since the sweep goes from left to right, face->anEdge should
             * be close to the edge we want.
             */
+
             up = face.anEdge;
             assert( up.Lnext !== up && up.Lnext.Lnext !== up );
 
@@ -3067,15 +3161,6 @@ var Tess2 = (function(){
             var maxFaceCount = 0;
             var maxVertexCount = 0;
             var faceVerts, i;
-            var elements = 0;
-            var vert;
-
-            // Assume that the input data is triangles now.
-            // Try to merge as many polygons as possible
-            if (polySize > 3)
-            {
-                mesh.mergeConvexFaces( polySize );
-            }
 
             // Mark unused
             for ( v = mesh.vHead.next; v !== mesh.vHead; v = v.next )
@@ -3102,7 +3187,7 @@ var Tess2 = (function(){
                 }
                 while (edge !== f.anEdge);
                 
-                assert( faceVerts <= polySize );
+                // assert( faceVerts <= polySize );
 
                 f.n = maxFaceCount;
                 ++maxFaceCount;
@@ -3180,6 +3265,7 @@ var Tess2 = (function(){
                 }
                 while (edge !== f.anEdge);
 
+                // this.contourIndices[nel2++] = edge.contourId;
                 this.contourIndices[nel2++] = f.contourId;
 
                 // Fill unused.
@@ -3338,7 +3424,10 @@ var Tess2 = (function(){
                     e.Org.coords[2] = 0.0;
                 /* Store the insertion number so that the vertex can be later recognized. */
                 e.Org.idx = this.vertexIndexCounter++;
-                e.Rface.contourId = this.countourId;
+
+                // e.contourId = this.contourId;
+                // e.Rface.contourId = this.contourId;
+                // e.Lface.contourId = this.contourId;
 
                 /* The winding of an edge says how the winding number changes as we
                 * cross from the edge''s right face to its left face.  We add the
@@ -3347,8 +3436,24 @@ var Tess2 = (function(){
                 */
                 e.winding = 1;
                 e.Sym.winding = -1;
+
+                // e.contourId = this.contourId
+                e.Sym.contourId = this.contourId
+
+                // e.Rface.contourId = this.contourId;
+                // e.Lface.contourId = this.contourId;
+                // e.Lface.contourId = this.contourId;
             }
-            this.countourId++;
+            
+            // var contourEdge = e;
+            // if (e.Rface.area < 0) contourEdge = e.Sym;
+            // var start = contourEdge;
+            // do {
+            //     contourEdge.contourId = this.contourId;
+            //     contourEdge = contourEdge.Lnext;
+            // } while( contourEdge !== start );
+
+            this.contourId++;
         },
 
     //	int tessTesselate( TESStesselator *tess, int windingRule, int elementType, int polySize, int vertexSize, const TESSreal* normal )
@@ -3394,9 +3499,14 @@ var Tess2 = (function(){
             * to the polygon, according to the rule given by tess->windingRule.
             * Each interior region is guaranteed be monotone.
             */
+
             Sweep.computeInterior( this );
 
             var mesh = this.mesh;
+            
+            for(var f = mesh.fHead.next; f !== mesh.fHead; f = f.next ){
+                f.make_contour_id_consistent();
+            }
 
             /* If the user wants only the boundary contours, we throw away all edges
             * except those which separate the interior from the exterior.
@@ -3416,6 +3526,17 @@ var Tess2 = (function(){
             }
             else
             {
+                for(var f = mesh.fHead.next; f !== mesh.fHead; f = f.next ){
+                    if (f.area == 0) {
+                        mesh.killFace_(f);
+                    }
+                }
+                // Assume that the input data is triangles now.
+                // Try to merge as many polygons as possible
+                if (polySize > 3)
+                {
+                    mesh.mergeConvexFaces( polySize );
+                }
                 this.outputPolymesh_( mesh, elementType, polySize, vertexSize );     /* output polygons */
             }
 
