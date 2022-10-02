@@ -10,17 +10,26 @@ window.onload = ()=>{
     canvas.width = 800;
     canvas.height = 600;
     document.body.append(canvas);
-    window.addEventListener("keydown", ()=>{
-        ipcRenderer.send("next")
-    });
+    info = document.createElement("div")
+    info.style.position = "absolute";
+    info.style.top = "0";
+    // info.style.textAlign = "right";
+    info.style.fontFamily = "monospace";
+    info.style.whiteSpace = "pre-wrap";
+    document.body.append(info);
 };
-
+window.addEventListener("keydown", ()=>{
+    ipcRenderer.send("next")
+});
 
 function clear() {
     var ctx = canvas.getContext("2d");
     ctx.clearRect(0,0,canvas.width, canvas.height);
 };
 
+function update_info(d) {
+    info.innerHTML = JSON.stringify(d, null, 4);
+};
 
 function draw_poly(data, fill, stroke, fillAlpha=1.0, strokeAlpha=1.0) {
     var ctx = canvas.getContext("2d");
@@ -55,6 +64,7 @@ function draw_line(x1, y1, x2, y2, stroke, thickness=1) {
         ctx.stroke();
     }
 }
+ipcRenderer.on('update_info', (_,args)=>update_info(...args));
 ipcRenderer.on('draw_poly', (_,args)=>draw_poly(...args));
 ipcRenderer.on('draw_line', (_,args)=>draw_line(...args));
 ipcRenderer.on('clear', (_,args)=>clear());

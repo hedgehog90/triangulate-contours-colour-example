@@ -46,7 +46,9 @@ async function run(){
             polySize: 3,
             vertexSize: 2
         })
+        
         console.log(`   Triangle count: ${res.elementCount}`);
+
         for (var i=0; i<res.elementCount; i++) {
             let vertices = [];
             for (var j=0;j<3;j++) {
@@ -57,11 +59,21 @@ async function run(){
             let color = obj.fill.color;
             win.webContents.send('draw_poly', [vertices, color, "#222222", 1.0, 0.4]);
         }
+
+        t+=res.elementCount;
+        l++;
+
+        win.webContents.send("update_info", [{
+            step: l,
+            contours: obj.contours.length,
+            fill: obj.fill,
+            triangles: res.elementCount,
+            totalTriangles: t,
+        }]);
+
         await new Promise((resolve)=>{
             ipcMain.once("next",resolve);
         });
-        t+=res.elementCount;
-        l++;
     }
     console.log(`------------------------------------------------`);
     console.log(`Total triangle count: ${t}`);
