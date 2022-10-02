@@ -3,11 +3,16 @@ const {ipcRenderer} = require("electron");
 /** @type {HTMLCanvasElement} */
 var canvas;
 window.onload = ()=>{
-    document.write("<head><style>html,body { padding:0; margin:0; overflow:hidden; }</style></head><body></body>");
+    var style = document.createElement("style")
+    style.innerHTML = `html,body { padding:0; margin:0; overflow:hidden; }</style></head>`;
+    document.head.append(style);
     canvas = document.createElement("canvas")
     canvas.width = 800;
     canvas.height = 600;
     document.body.append(canvas);
+    window.addEventListener("keydown", ()=>{
+        ipcRenderer.send("next")
+    });
 };
 
 
@@ -17,7 +22,7 @@ function clear() {
 };
 
 
-function draw_poly(data, fill, stroke) {
+function draw_poly(data, fill, stroke, fillAlpha=1.0, strokeAlpha=1.0) {
     var ctx = canvas.getContext("2d");
     ctx.beginPath();
     ctx.lineWidth = 1;
@@ -27,14 +32,16 @@ function draw_poly(data, fill, stroke) {
     }
     ctx.closePath();
     if (stroke) {
+        ctx.globalAlpha = strokeAlpha;
         ctx.strokeStyle = stroke;
         ctx.stroke();
+        ctx.globalAlpha = 1.0;
     }
     if (fill) {
-        // ctx.globalAlpha = 0.5;
+        ctx.globalAlpha = fillAlpha;
         ctx.fillStyle = fill;
         ctx.fill();
-        // ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = 1.0;
     }
 }
 function draw_line(x1, y1, x2, y2, stroke, thickness=1) {
