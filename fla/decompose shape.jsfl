@@ -101,7 +101,6 @@ function sort_depth(elements, timeline) {
     if (timeline) layer_index_map = {};
     elements.sort(function(a,b) {
         if (timeline) {
-            fl.trace([a.layer.name, b.layer.name])
             if (!layer_index_map[a.layer.name]) layer_index_map[a.layer.name] = timeline.findLayerIndex(a.layer.name);
             if (!layer_index_map[b.layer.name]) layer_index_map[b.layer.name] = timeline.findLayerIndex(b.layer.name);
             if (layer_index_map[a.layer.name] < layer_index_map[b.layer.name]) return -1;
@@ -122,14 +121,8 @@ function sort_depth(elements, timeline) {
 function transform_vertex(v, mat) {
     var p = {x: v.x, y: v.y};
     p = fl.Math.transformPoint(mat, v);
-    p.x = Math.round(p.x*100)/100;
-    p.y = Math.round(p.y*100)/100;
     return p;
 }
-
-// var curve_recursion_limit = 32;
-// var curve_collinearity_epsilon = 1e-30;
-// var m_angle_tolerance = (Math.PI/180) * 20;
 
 fl.outputPanel.clear();
 fl.drawingLayer.beginDraw(true);
@@ -147,7 +140,6 @@ function add_object(e, parentMatrix) {
         mat.tx = mat.tx;
         mat.ty = mat.ty;
     }
-    fl.trace([JSON.stringify(mat), JSON.stringify(parentMatrix)]);
     if (parentMatrix) {
         mat = fl.Math.concatMatrix(mat, parentMatrix);
     }
@@ -177,6 +169,9 @@ function add_object(e, parentMatrix) {
                 }
                 he = he.getNext();
                 id = he.id;
+            }
+            for (var i=0; i<path.length; i++) {
+                path[i] = Math.round(path[i]*100)/100;
             }
             if (!contour_fill_map[fillStr]) {
                 contour_fill_map[fillStr] = {
