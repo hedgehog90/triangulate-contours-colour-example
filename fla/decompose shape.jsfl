@@ -136,10 +136,6 @@ var objects = [];
 function add_object(e, parentMatrix) {
     var contour_fill_map = {};
     var mat = e.matrix;
-    if (e instanceof Shape && e.isGroup) {
-        mat.tx = mat.tx;
-        mat.ty = mat.ty;
-    }
     if (parentMatrix) {
         mat = fl.Math.concatMatrix(mat, parentMatrix);
     }
