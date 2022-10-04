@@ -36,10 +36,6 @@ async function run(){
 
     win.webContents.send('clear');
 
-    var allvertices = [];
-    var allelements = [];
-    var allcolors = [];
-
     var l=0, t=0;
     for (var obj of data) {
         console.log(`Calculating layer ${l}...`);
@@ -57,9 +53,9 @@ async function run(){
         var num_vertices = res.elementCount * 3;
         var vertices = new Float32Array(num_vertices*2);
         var colors = new Float32Array(num_vertices*4);
+        let v = 0;
         for (var i=0; i<res.elementCount; i++) {
             for (var j=0; j<polySize; j++) {
-                var v = i*polySize+j;
                 var idx = res.elements[v];
                 vertices[v*2] = res.vertices[idx*2]
                 vertices[v*2+1] = res.vertices[idx*2+1]
@@ -67,13 +63,12 @@ async function run(){
                 colors[v*4+1] = color[1];
                 colors[v*4+2] = color[2];
                 colors[v*4+3] = color[3];
+                v++;
             }
         }
         
         console.log(`   Triangle count: ${res.elementCount}`);
 
-        allvertices.push(...vertices);
-        allcolors.push(...colors);
         win.webContents.send('draw_triangles', [vertices, colors]);
 
         t += res.elementCount;
@@ -93,12 +88,6 @@ async function run(){
     }
     console.log(`------------------------------------------------`);
     console.log(`Total triangle count: ${t}`);
-
-    await new Promise((resolve)=>{
-        ipcMain.once("next",resolve);
-    });
-    
-    win.webContents.send('draw_triangles', [allvertices, allelements, allcolors]);
 }
 
 console.log("Press a key to draw the next layer...");
